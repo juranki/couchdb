@@ -201,7 +201,7 @@ store_pending_deletes(DbDir, Files) ->
 find_file_versions(Filepath) ->
     Root = filename:dirname(Filepath),
     Base = filename:basename(Filepath),
-    filelib:fold_files(Root,"^" ++ Base ++ "\.[0-9]$",false,
+    filelib:fold_files(Root,"^" ++ Base ++ "\.[0-9]+$",false,
                        fun(File,AccIn) ->
                                [File | AccIn]
                        end, []).
