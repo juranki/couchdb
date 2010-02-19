@@ -58,10 +58,7 @@ next_versioned_filepath(Filepath) ->
         N ->   Filepath ++ "." ++ integer_to_list(N + 1)
     end.
 current_versioned_filepath(Filepath) ->
-    case current_version_number(Filepath) of
-        nil -> {error, enoent};
-        N ->   Filepath ++ "." ++ integer_to_list(N)
-    end.
+    gen_server:call(?MODULE,{current_versioned_filepath,Filepath}).
 
 %%====================================================================
 %% gen_server callbacks
@@ -77,16 +74,15 @@ init([]) ->
 
 
 
-handle_call({delete,Filepath}, From, 
+handle_call({delete,Filepath}, _From, 
             #state{db_dir=DbDir,
                    pending_deletes=PendingDeletes} = State) ->
-    case current_versioned_filepath(Filepath) of
+    case current_versioned_filepath_impl(Filepath,PendingDeletes) of
         {error,Reason} -> {reply, {error,Reason} , State};
         VersionedFilename ->
             case file:delete(VersionedFilename) of
                 {error, eacces} ->
-                    NewPendingDeletes = [VersionedFilename|PendingDeletes],
-                    store_pending_deletes(DbDir,NewPendingDeletes),
+                    NewPendingDeletes = add_pending_delete(DbDir, VersionedFilename, PendingDeletes),
                     {reply, ok, State#state{pending_deletes=NewPendingDeletes}};
                 Other ->
                     {reply, Other, State}
@@ -97,18 +93,15 @@ handle_call({delete_versioned,Filepath}, _From,
                    pending_deletes=PendingDeletes} = State) ->
     case file:delete(Filepath) of
         {error, eacces} ->
-            NewPendingDeletes = [Filepath|PendingDeletes],
-            store_pending_deletes(DbDir,NewPendingDeletes),
+            NewPendingDeletes = add_pending_delete(DbDir, Filepath, PendingDeletes),
             {reply, ok, State#state{pending_deletes=NewPendingDeletes}};
         {error,eperm} ->
             case file:del_dir(Filepath) of
                 {error, eacces} ->
-                    NewPendingDeletes = [Filepath|PendingDeletes],
-                    store_pending_deletes(DbDir,NewPendingDeletes),
+                    NewPendingDeletes = add_pending_delete(DbDir, Filepath, PendingDeletes),
                     {reply, ok, State#state{pending_deletes=NewPendingDeletes}};
                 {error, eexist} ->
-                    NewPendingDeletes = [Filepath|PendingDeletes],
-                    store_pending_deletes(DbDir,NewPendingDeletes),
+                    NewPendingDeletes = add_pending_delete(DbDir, Filepath, PendingDeletes),
                     {reply, ok, State#state{pending_deletes=NewPendingDeletes}};
                 Other ->
                     {reply, Other, State}
@@ -119,13 +112,16 @@ handle_call({delete_versioned,Filepath}, _From,
 handle_call({create,Filepath}, _From, State) ->
     VersionedFilepath = next_versioned_filepath(Filepath),
     {reply, file:open(VersionedFilepath, [read, write, raw, binary]), State};
-handle_call({open,Filepath}, _From, State) ->
-    case current_versioned_filepath(Filepath) of
-        nil ->
-            {reply, {error, enoent}, State};
+handle_call({open,Filepath}, _From, #state{pending_deletes=PendingDeletes} = State) ->
+    case current_versioned_filepath_impl(Filepath, PendingDeletes) of
+        {error, Reason} ->
+            {reply, {error, Reason}, State};
         VersionedFilepath ->
             {reply, file:open(VersionedFilepath, [read, write, raw, binary]),State}
     end;
+handle_call({current_versioned_filepath,Filepath}, _From, 
+            #state{pending_deletes=PendingDeletes} = State) ->
+    {reply, current_versioned_filepath_impl(Filepath,PendingDeletes), State};
 handle_call(all_databases, _From, #state{db_dir=DbDir,
                                          pending_deletes=PendingDeletes} = State) ->
     Filenames =
@@ -144,10 +140,11 @@ handle_call(all_databases, _From, #state{db_dir=DbDir,
                         [DBName | AccIn]
                 end
             end,[]),
-    {reply, {ok, lists:usort(Filenames)}, State};
-handle_call(_Request, _From, State) ->
-    Reply = ok,
-    {reply, Reply, State}.
+    {reply, {ok, lists:usort(Filenames)}, State}.
+
+%handle_call(_Request, _From, State) ->
+%    Reply = ok,
+%    {reply, Reply, State}.
 
 
 
@@ -183,6 +180,17 @@ code_change(_OldVsn, State, _Extra) ->
 %%% Internal functions
 %%--------------------------------------------------------------------
 
+current_versioned_filepath_impl(Filepath,PendingDeletes) ->
+    case current_version_number(Filepath) of
+        nil -> {error, enoent};
+        N ->
+            CurrFilepath = Filepath ++ "." ++ integer_to_list(N),
+            case lists:member(CurrFilepath, PendingDeletes) of
+                true ->  {error, enoent};
+                false -> CurrFilepath
+            end
+    end.
+
 load_pending_deletes(DbDir) ->
     Filepath = filename:join(DbDir, ?PENDING_DELETES_FILE),
     case file:read_file(Filepath) of
@@ -196,6 +204,17 @@ store_pending_deletes(DbDir, Files) ->
     Filepath = filename:join(DbDir, ?PENDING_DELETES_FILE),
     Data = list_to_binary(string:join(Files,"\n")),
     file:write_file(Filepath,Data).
+
+add_pending_delete(DbDir,Filepath,PendingDeletes) ->
+    case lists:member(Filepath,PendingDeletes) of
+        true -> 
+            PendingDeletes;
+        false ->
+            NewPendingDeletes = [Filepath|PendingDeletes],
+            ok = store_pending_deletes(DbDir,NewPendingDeletes),
+            NewPendingDeletes
+    end.
+    
 
 
 find_file_versions(Filepath) ->
@@ -220,25 +239,42 @@ current_version_number(Filepath) ->
 
 process_pending_deletes(Filepaths) ->
     %error_logger:info_report({process_pending_deletes,Filepaths}),
-    spawn(fun() ->
-                  lists:foreach(fun(Filepath) ->
-                                        %error_logger:info_report({deleting,Filepath}),
-                                        case file:delete(Filepath) of
+                       
+    spawn(
+      fun() ->
+              lists:foreach(
+                fun(Filepath) ->
+                                                %error_logger:info_report({deleting,Filepath}),
+                        case file:delete(Filepath) of
+                            ok ->
+                                couch_fs:file_deleted(Filepath);
+                            {error,enoent} ->
+                                couch_fs:file_deleted(Filepath);
+                            
+                            {error,eperm} ->
+                                {ok, DirContents} = file:list_dir(Filepath),
+                                AllToBeDeleted = lists:all(
+                                                   fun(F) -> 
+                                                           lists:member(
+                                                             filename:join(Filepath,F),
+                                                             Filepaths)
+                                                   end,
+                                                   DirContents),
+                                case AllToBeDeleted of
+                                    false -> %% contains files not on list: don't delete dir
+                                        couch_fs:file_deleted(Filepath);
+                                    true ->
+                                        case file:del_dir(Filepath) of
                                             ok ->
-                                                couch_fs:file_deleted(Filepath);
-                                            {error,enoent} ->
-                                                couch_fs:file_deleted(Filepath);
-
-                                            {error,eperm} ->
-                                                case file:del_dir(Filepath) of
-                                                    ok ->
-                                                        couch_fs:file_deleted(Filepath); 
-                                                   _ ->
-                                                        ok
-                                                end;
+                                                couch_fs:file_deleted(Filepath); 
                                             _ ->
                                                 ok
                                         end
-                                end,
-                                Filepaths)
-          end).
+                                end;
+                        
+                            _ ->
+                                ok
+                        end
+                end,
+                Filepaths)
+      end).
