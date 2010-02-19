@@ -77,7 +77,8 @@ source_files = \
     couch_view_updater.erl \
     couch_view_group.erl \
     couch_db_updater.erl \
-    couch_work_queue.erl
+    couch_work_queue.erl \
+    couch_fs.erl
 
 EXTRA_DIST = $(source_files) couch_db.hrl
 
@@ -133,7 +134,8 @@ compiled_files = \
     couch_view_updater.beam \
     couch_view_group.beam \
     couch_db_updater.beam \
-    couch_work_queue.beam
+    couch_work_queue.beam \
+    couch_fs.beam
 
 # doc_base = \
 #     erlang.png \
