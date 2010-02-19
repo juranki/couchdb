@@ -19,6 +19,7 @@
 
 -record(file, {
     fd,
+    filepath,
     tail_append_begin=0 % 09 UPGRADE CODE
     }).
 
@@ -27,6 +28,7 @@
 -export([pread_binary/2, read_header/1, truncate/2, upgrade_old_header/2]).
 -export([append_term_md5/2,append_binary_md5/2]).
 -export([init/1, terminate/2, handle_call/3, handle_cast/2, code_change/3, handle_info/2]).
+-export([rename/2]).
 
 %%----------------------------------------------------------------------
 %% Args:   Valid Options are [create] and [create,overwrite].
@@ -57,6 +59,8 @@ open(Filepath, Options) ->
         Error
     end.
 
+rename(Fd, Destination) ->
+    gen_server:call(Fd, {rename, Destination}, infinity).
 
 %%----------------------------------------------------------------------
 %% Purpose: To append an Erlang term to the end of the file.
@@ -221,45 +225,28 @@ init_status_error(ReturnPid, Ref, Error) ->
 init({Filepath, Options, ReturnPid, Ref}) ->
     case lists:member(create, Options) of
     true ->
-        filelib:ensure_dir(Filepath),
-        case file:open(Filepath, [read, write, raw, binary]) of
+        VersionedFilepath = couch_fs:next_versioned_filepath(Filepath),
+        filelib:ensure_dir(VersionedFilepath),
+        case file:open(VersionedFilepath, [read, write, raw, binary]) of
         {ok, Fd} ->
-            {ok, Length} = file:position(Fd, eof),
-            case Length > 0 of
-            true ->
-                % this means the file already exists and has data.
-                % FYI: We don't differentiate between empty files and non-existant
-                % files here.
-                case lists:member(overwrite, Options) of
-                true ->
-                    {ok, 0} = file:position(Fd, 0),
-                    ok = file:truncate(Fd),
-                    ok = file:sync(Fd),
-                    couch_stats_collector:track_process_count(
-                            {couchdb, open_os_files}),
-                    {ok, #file{fd=Fd}};
-                false ->
-                    ok = file:close(Fd),
-                    init_status_error(ReturnPid, Ref, file_exists)
-                end;
-            false ->
-                couch_stats_collector:track_process_count(
-                        {couchdb, open_os_files}),
-                {ok, #file{fd=Fd}}
-            end;
+            couch_stats_collector:track_process_count(
+                    {couchdb, open_os_files}),
+            {ok, #file{fd=Fd,filepath=VersionedFilepath}};
         Error ->
             init_status_error(ReturnPid, Ref, Error)
         end;
     false ->
-        % open in read mode first, so we don't create the file if it doesn't exist.
-        case file:open(Filepath, [read, raw]) of
-        {ok, Fd_Read} ->
-            {ok, Fd} = file:open(Filepath, [read, write, raw, binary]),
-            ok = file:close(Fd_Read),
-            couch_stats_collector:track_process_count({couchdb, open_os_files}),
-            {ok, #file{fd=Fd}};
-        Error ->
-            init_status_error(ReturnPid, Ref, Error)
+        case couch_fs:current_versioned_filepath(Filepath) of
+        {error,Reason} ->
+             init_status_error(ReturnPid, Ref, {error,Reason});
+        VersionedFilepath ->
+            case  file:open(VersionedFilepath, [read, write, raw, binary]) of
+            {ok, Fd} ->
+                couch_stats_collector:track_process_count({couchdb, open_os_files}),
+                {ok, #file{fd=Fd,filepath=VersionedFilepath}};
+            Error ->
+                init_status_error(ReturnPid, Ref, Error)
+            end
         end
     end.
 
@@ -268,6 +255,18 @@ terminate(_Reason, _Fd) ->
     ok.
 
 
+handle_call({rename, Destination}, _From, #file{fd=Fd,filepath=Source}=File) ->
+    Fp = couch_fs:next_versioned_filepath(Destination),
+    case os:type() of
+    {win32,_} ->
+        ok = file:close(Fd),
+        ok = file:rename(Source,Fp),
+        {ok, NewFd} = file:open(Fp, [read, write, raw, binary]),
+        {reply, ok, #file{fd=NewFd,filepath=Fp}};
+    _Other ->
+        ok = file:rename(Source,Fp),
+        {reply, ok, File#file{filepath=Fp}}
+    end;
 handle_call({pread, Pos, Bytes}, _From, #file{fd=Fd,tail_append_begin=TailAppendBegin}=File) ->
     {ok, Bin} = file:pread(Fd, Pos, Bytes),
     {reply, {ok, Bin, Pos >= TailAppendBegin}, File};
