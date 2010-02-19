@@ -152,18 +152,7 @@ terminate(Reason, _Srv) ->
     ok.
 
 all_databases() ->
-    {ok, #server{root_dir=Root}} = gen_server:call(couch_server, get_server),
-    Filenames =
-    filelib:fold_files(Root, "^[a-z0-9\\_\\$()\\+\\-]*[\\.]couch$", true,
-        fun(Filename, AccIn) ->
-            case Filename -- Root of
-            [$/ | RelativeFilename] -> ok;
-            RelativeFilename -> ok
-            end,
-            [list_to_binary(filename:rootname(RelativeFilename, ".couch")) | AccIn]
-        end, []),
-    {ok, Filenames}.
-
+    couch_fs:all_databases().
 
 maybe_close_lru_db(#server{dbs_open=NumOpen, max_dbs_open=MaxOpen}=Server)
         when NumOpen < MaxOpen ->
@@ -270,6 +259,7 @@ handle_call({create, DbName, Options}, _From, Server) ->
                 {reply, CloseError, Server}
             end;
         [_AlreadyRunningDb] ->
+            error_logger:info_report("create: already running"),
             {reply, file_exists, Server}
         end;
     Error ->
@@ -294,9 +284,9 @@ handle_call({delete, DbName, _Options}, _From, Server) ->
 
         %% Delete any leftover .compact files.  If we don't do this a subsequent
         %% request for this DB will try to open the .compact file and use it.
-        file:delete(FullFilepath ++ ".compact"),
+        couch_fs:delete(FullFilepath ++ ".compact"),
 
-        case file:delete(FullFilepath) of
+        case couch_fs:delete(FullFilepath) of
         ok ->
             couch_db_update_notifier:notify({deleted, DbName}),
             {reply, ok, Server2};

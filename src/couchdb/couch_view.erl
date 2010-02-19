@@ -20,7 +20,7 @@
     extract_map_view/1,get_group_server/2,get_group_info/2,cleanup_index_files/1]).
 
 -include("couch_db.hrl").
-
+-include_lib("kernel/include/file.hrl").
 
 -record(server,{
     root_dir = []}).
@@ -85,6 +85,8 @@ cleanup_index_files(Db) ->
 
     FileList = list_index_files(Db),
 
+    %Sigs2 = lists:map(fun(S) -> S ++ "\.[0-9]+" end,
+
     % regex that matches all ddocs
     RegExp = "("++ string:join(Sigs, "|") ++")",
 
@@ -92,9 +94,11 @@ cleanup_index_files(Db) ->
     DeleteFiles = [FilePath
 		   || FilePath <- FileList,
 		      re:run(FilePath, RegExp, [{capture, none}]) =:= nomatch],
+
+    error_logger:info_report({cleanup_index_files,DeleteFiles}),
     % delete unused files
     ?LOG_DEBUG("deleting unused view index files: ~p",[DeleteFiles]),
-    [file:delete(File)||File <- DeleteFiles],
+    [couch_fs:delete_versioned(File)||File <- DeleteFiles],
     ok.
 
 list_index_files(Db) ->
@@ -304,7 +308,7 @@ handle_cast({reset_indexes, DbName}, #server{root_dir=Root}=Server) ->
             end
         end, Names),
     delete_index_dir(Root, DbName),
-    file:delete(Root ++ "/." ++ binary_to_list(DbName) ++ "_temp"),
+    couch_fs:delete_versioned(Root ++ "/." ++ binary_to_list(DbName) ++ "_temp"),
     {noreply, Server}.
 
 handle_info({'EXIT', FromPid, Reason}, Server) ->
@@ -345,14 +349,15 @@ nuke_dir(Dir) ->
         lists:foreach(
             fun(File)->
                 Full = Dir ++ "/" ++ File,
-                case file:delete(Full) of
-                ok -> ok;
-                {error, eperm} ->
-                    ok = nuke_dir(Full)
+                case file:read_file_info(Full) of
+                {ok, #file_info{type=directory}} ->
+                    ok = nuke_dir(Full);
+                {ok, #file_info{type=regular}} ->
+                    ok = couch_fs:delete_versioned(Full)
                 end
             end,
             Files),
-        ok = file:del_dir(Dir)
+        ok = couch_fs:delete_versioned(Dir)
     end.
 
 
