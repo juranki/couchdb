@@ -39,9 +39,11 @@
 start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
+% delete Filepath 
 delete(Filepath) ->
     gen_server:call(?MODULE,{delete,Filepath},infinity).
 
+% delete the current version of Filepath
 delete_versioned(Filepath) ->
     gen_server:call(?MODULE,{delete_versioned,Filepath},infinity).
 
@@ -70,7 +72,7 @@ init([]) ->
 
 
 
-handle_call({delete,Filepath}, _From, 
+handle_call({delete_versioned,Filepath}, _From, 
             #state{db_dir=DbDir,
                    pending_deletes=PendingDeletes} = State) ->
     case current_versioned_filepath_impl(Filepath,PendingDeletes) of
@@ -84,7 +86,7 @@ handle_call({delete,Filepath}, _From,
                     {reply, Other, State}
             end
     end;
-handle_call({delete_versioned,Filepath}, _From, 
+handle_call({delete,Filepath}, _From, 
             #state{db_dir=DbDir,
                    pending_deletes=PendingDeletes} = State) ->
     case file:delete(Filepath) of

@@ -85,7 +85,7 @@ cleanup_index_files(Db) ->
 
     FileList = list_index_files(Db),
 
-    %Sigs2 = lists:map(fun(S) -> S ++ "\.[0-9]+" end,
+    %Sigs2 = [S ++ "\.[0-9]+"||S <- Sigs],%lists:map(fun(S) -> S ++ "\.[0-9]+" end,
 
     % regex that matches all ddocs
     RegExp = "("++ string:join(Sigs, "|") ++")",
@@ -98,7 +98,7 @@ cleanup_index_files(Db) ->
     error_logger:info_report({cleanup_index_files,DeleteFiles}),
     % delete unused files
     ?LOG_DEBUG("deleting unused view index files: ~p",[DeleteFiles]),
-    [couch_fs:delete_versioned(File)||File <- DeleteFiles],
+    [couch_fs:delete(File)||File <- DeleteFiles],
     ok.
 
 list_index_files(Db) ->
@@ -321,7 +321,7 @@ do_reset_indexes(DbName, Root) ->
             end
         end, Names),
     delete_index_dir(Root, DbName),
-    couch_fs:delete_versioned(Root ++ "/." ++ ?b2l(DbName) ++ "_temp").
+    couch_fs:delete(Root ++ "/." ++ ?b2l(DbName) ++ "_temp").
 
 handle_info({'EXIT', FromPid, Reason}, Server) ->
     case ets:lookup(couch_groups_by_updater, FromPid) of
@@ -365,11 +365,11 @@ nuke_dir(Dir) ->
                 {ok, #file_info{type=directory}} ->
                     ok = nuke_dir(Full);
                 {ok, #file_info{type=regular}} ->
-                    ok = couch_fs:delete_versioned(Full)
+                    ok = couch_fs:delete(Full)
                 end
             end,
             Files),
-        ok = couch_fs:delete_versioned(Dir)
+        ok = couch_fs:delete(Dir)
     end.
 
 

@@ -26,7 +26,7 @@ init({MainPid, DbName, Filepath, Fd, Options}) ->
         Header =  #db_header{},
         ok = couch_file:write_header(Fd, Header),
         % delete any old compaction files that might be hanging around
-        couch_fs:delete(Filepath ++ ".compact");
+        couch_fs:delete_versioned(Filepath ++ ".compact");
     false ->
         ok = couch_file:upgrade_old_header(Fd, <<$g, $m, $k, 0>>), % 09 UPGRADE CODE
         {ok, Header} = couch_file:read_header(Fd)
@@ -163,7 +163,7 @@ handle_cast({compact_done, CompactFilepath}, #db{filepath=Filepath}=Db) ->
 
         ?LOG_DEBUG("CouchDB swapping files ~s and ~s.",
                 [Filepath, CompactFilepath]),
-        ok = couch_fs:delete(Filepath),
+        ok = couch_fs:delete_versioned(Filepath),
         ok = couch_file:rename(NewFd, Filepath),
         close_db(Db),
         ok = gen_server:call(Db#db.main_pid, {db_updated, NewDb2}),
