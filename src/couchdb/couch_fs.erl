@@ -12,8 +12,7 @@
 
 %%%-------------------------------------------------------------------
 %%% File    : couch_fs.erl
-%%% Author  :  <juhani@juranki.com>
-%%% Description : Isolate CouchDB from filesystems differences between platforms
+%%% Description : Isolate CouchDB from filesystem differences between platforms
 %%%-------------------------------------------------------------------
 -module(couch_fs).
 
@@ -21,7 +20,7 @@
 
 %% API
 -export([start_link/0]).
--export([delete/1,delete_versioned/1,file_deleted/1,all_databases/0]).
+-export([delete/1,delete_versioned/1,all_databases/0]).
 -export([next_versioned_filepath/1,current_versioned_filepath/1]).
 
 %% gen_server callbacks
@@ -46,9 +45,6 @@ delete(Filepath) ->
 delete_versioned(Filepath) ->
     gen_server:call(?MODULE,{delete_versioned,Filepath},infinity).
 
-file_deleted(Filepath) ->
-    gen_server:cast(?MODULE,{file_deleted,Filepath}).
-    
 all_databases() ->
     gen_server:call(?MODULE,all_databases,infinity).
 
@@ -148,8 +144,8 @@ handle_call(all_databases, _From, #state{db_dir=DbDir,
 
 
 
-handle_cast({file_deleted,Filepath}, #state{pending_deletes=PendingDeletes,
-                                            db_dir=DbDir}=State) ->
+handle_cast({remove_from_list,Filepath}, #state{pending_deletes=PendingDeletes,
+                                                db_dir=DbDir}=State) ->
     NewPendingDeletes = lists:delete(Filepath,PendingDeletes),
     store_pending_deletes(DbDir,NewPendingDeletes),
     {noreply, State#state{pending_deletes=NewPendingDeletes}};
@@ -239,7 +235,10 @@ current_version_number(Filepath) ->
 
 process_pending_deletes(Filepaths) ->
     %error_logger:info_report({process_pending_deletes,Filepaths}),
-                       
+    RemoveFromList = fun(Path) ->
+                             gen_server:cast(?MODULE,{remove_from_list,Path})
+                     end,
+    
     spawn(
       fun() ->
               lists:foreach(
@@ -247,9 +246,9 @@ process_pending_deletes(Filepaths) ->
                                                 %error_logger:info_report({deleting,Filepath}),
                         case file:delete(Filepath) of
                             ok ->
-                                couch_fs:file_deleted(Filepath);
+                                RemoveFromList(Filepath);
                             {error,enoent} ->
-                                couch_fs:file_deleted(Filepath);
+                                RemoveFromList(Filepath);
                             
                             {error,eperm} ->
                                 {ok, DirContents} = file:list_dir(Filepath),
@@ -262,11 +261,11 @@ process_pending_deletes(Filepaths) ->
                                                    DirContents),
                                 case AllToBeDeleted of
                                     false -> %% contains files not on list: don't delete dir
-                                        couch_fs:file_deleted(Filepath);
+                                        RemoveFromList(Filepath);
                                     true ->
                                         case file:del_dir(Filepath) of
                                             ok ->
-                                                couch_fs:file_deleted(Filepath); 
+                                                RemoveFromList(Filepath); 
                                             _ ->
                                                 ok
                                         end
