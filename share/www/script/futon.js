@@ -69,9 +69,15 @@
           if (!validateUsernameAndPassword(data, callback)) return;
           $.couch.config({
             success : function() {
-              callback();
-              doLogin(data.name, data.password, callback);            
-              doSignup(data.name, null, callback, false);
+              doLogin(data.name, data.password, function(errors) {
+                if(!$.isEmptyObject(errors)) {
+                  callback(errors);
+                  return;
+                }
+                doSignup(data.name, null, function(errors) {
+                  callback(errors);
+                  }, false);
+                });            
             }
           }, "admins", data.name, data.password);
         }
@@ -331,13 +337,13 @@
           var date = new Date();
           date.setTime(date.getTime() + 14*24*60*60*1000); // two weeks
           document.cookie = cookiePrefix + name + "=" + escape(value) +
-            "; domain=" + location.hostname + "; expires=" + date.toGMTString();
+            "; expires=" + date.toGMTString();
         },
         del: function(name) {
           var date = new Date();
           date.setTime(date.getTime() - 24*60*60*1000); // yesterday
-          document.cookie = cookiePrefix + name + "=; domain=" +
-            location.hostname + "; expires=" + date.toGMTString();
+          document.cookie = cookiePrefix + name + "=" +
+            "; expires=" + date.toGMTString();
         }
       },
 

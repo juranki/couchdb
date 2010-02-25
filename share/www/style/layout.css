@@ -236,7 +236,7 @@ body.fullwidth #wrap { margin-right: 0; }
 #toolbar button:hover { background-position: 2px -30px; color: #000; }
 #toolbar button:active { background-position: 2px -62px; color: #000; }
 #toolbar button.add { background-image: url(../image/add.png); }
-#toolbar button.security { background-image: url(../image/compact.png); }
+#toolbar button.security { background-image: url(../image/key.png); }
 #toolbar button.compact { background-image: url(../image/compact.png); }
 #toolbar button.delete { background-image: url(../image/delete.png); }
 #toolbar button.load { background-image: url(../image/load.png); }
@@ -268,9 +268,8 @@ body.fullwidth #wrap { margin-right: 0; }
 body.loading #dialog h2 {
   background-image: url(../image/spinner.gif);
 }
-#dialog h3 {
-  color: #ccc; font-size: 110%; font-weight: bold; margin: 0 -2em;
-  padding: .35em 2em;
+#dialog h3 { color: #ccc; font-size: 100%; font-weight: bold; margin: 0 -2em;
+  padding: .35em 2em 0;
 }
 #dialog fieldset { background: #222; border-top: 1px solid #111;
   margin: 0 0 1em; padding: .5em 1em 1em;

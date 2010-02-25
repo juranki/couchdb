@@ -68,13 +68,24 @@ replicate({Props}=PostBody, UserCtx) ->
         [?MODULE]
     },
 
-    Server = start_replication_server(Replicator),
-
-    case proplists:get_value(<<"continuous">>, Props, false) of
+    case proplists:get_value(<<"cancel">>, Props, false) of
     true ->
-        {ok, {continuous, ?l2b(BaseId)}};
+ case supervisor:terminate_child(couch_rep_sup, BaseId ++ Extension) of
+        {error, not_found} ->
+     {error, not_found};
+        ok ->
+     ok = supervisor:delete_child(couch_rep_sup, BaseId ++ Extension),
+            {ok, {cancelled, ?l2b(BaseId)}}
+ end;
     false ->
-        get_result(Server, PostBody, UserCtx)
+        Server = start_replication_server(Replicator),
+
+        case proplists:get_value(<<"continuous">>, Props, false) of
+        true ->
+            {ok, {continuous, ?l2b(BaseId)}};
+        false ->
+            get_result(Server, PostBody, UserCtx)
+        end
     end.
 
 checkpoint(Server) ->
@@ -635,7 +646,7 @@ ensure_full_commit(#http_db{} = Target) ->
     true = proplists:get_value(<<"ok">>, ResultProps),
     proplists:get_value(<<"instance_start_time">>, ResultProps);
 ensure_full_commit(Target) ->
-    {ok, NewDb} = couch_db:open(Target#db.name, []),
+    {ok, NewDb} = couch_db:open_int(Target#db.name, []),
     UpdateSeq = couch_db:get_update_seq(Target),
     CommitSeq = couch_db:get_committed_update_seq(NewDb),
     InstanceStartTime = NewDb#db.instance_start_time,
@@ -663,7 +674,7 @@ ensure_full_commit(#http_db{} = Source, RequiredSeq) ->
         proplists:get_value(<<"instance_start_time">>, ResultProps);
     undefined -> nil end;
 ensure_full_commit(Source, RequiredSeq) ->
-    {ok, NewDb} = couch_db:open(Source#db.name, []),
+    {ok, NewDb} = couch_db:open_int(Source#db.name, []),
     CommitSeq = couch_db:get_committed_update_seq(NewDb),
     InstanceStartTime = NewDb#db.instance_start_time,
     couch_db:close(NewDb),
@@ -694,7 +705,7 @@ update_local_doc(Db, Doc) ->
 up_to_date(#http_db{}, _Seq) ->
     true;
 up_to_date(Source, Seq) ->
-    {ok, NewDb} = couch_db:open(Source#db.name, []),
+    {ok, NewDb} = couch_db:open_int(Source#db.name, []),
     T = NewDb#db.update_seq == Seq,
     couch_db:close(NewDb),
     T.

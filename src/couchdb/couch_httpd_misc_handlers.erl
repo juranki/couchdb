@@ -46,6 +46,7 @@ handle_favicon_req(#httpd{method='GET'}=Req, DocumentRoot) ->
         {"Expires", httpd_util:rfc1123_date(OneYearFromNow)}
     ],
     couch_httpd:serve_file(Req, "favicon.ico", DocumentRoot, CachingHeaders);
+
 handle_favicon_req(Req, _) ->
     send_method_not_allowed(Req, "GET,HEAD").
 
@@ -89,10 +90,14 @@ handle_replicate_req(#httpd{method='POST'}=Req) ->
     try couch_rep:replicate(PostBody, Req#httpd.user_ctx) of
     {ok, {continuous, RepId}} ->
         send_json(Req, 202, {[{ok, true}, {<<"_local_id">>, RepId}]});
+    {ok, {cancelled, RepId}} ->
+        send_json(Req, 200, {[{ok, true}, {<<"_local_id">>, RepId}]});
     {ok, {JsonResults}} ->
         send_json(Req, {[{ok, true} | JsonResults]});
     {error, {Type, Details}} ->
         send_json(Req, 500, {[{error, Type}, {reason, Details}]});
+    {error, not_found} ->
+        send_json(Req, 404, {[{error, not_found}]});
     {error, Reason} ->
         send_json(Req, 500, {[{error, Reason}]})
     catch
