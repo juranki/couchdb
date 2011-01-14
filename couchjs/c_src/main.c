@@ -14,14 +14,7 @@
 #include <stdio.h>
 #include <string.h>
 
-#include "config.h"
-#ifdef HAVE_JS_JSAPI_H
-#include <js/jsapi.h>
-#elif HAVE_MOZJS_JSAPI_H
-#include <mozjs/jsapi.h>
-#else
 #include <jsapi.h>
-#endif
 
 #include "utf8.h"
 #include "http.h"
