@@ -10,14 +10,7 @@
 // License for the specific language governing permissions and limitations under
 // the License.
 
-#include "config.h"
-#ifdef HAVE_JS_JSAPI_H
-#include <js/jsapi.h>
-#elif HAVE_MOZJS_JSAPI_H
-#include <mozjs/jsapi.h>
-#else
 #include <jsapi.h>
-#endif
 
 static int
 enc_char(uint8 *utf8Buffer, uint32 ucs4Char)
