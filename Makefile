@@ -18,12 +18,10 @@ all: compile
 
 compile:
 	@echo "==> couchjs (compile)"
-	@cd couchjs && python scons/scons.py
 	@./rebar compile
 
 clean:
 	@echo "==> couchjs (clean)"
-	@cd couchjs && python scons/scons.py --clean
 	@./rebar clean
 
 
@@ -59,6 +57,6 @@ dev: compile
 	@rm -rf rel/tmpdata
 	@rm -rf rel/dev
 	@echo "==> Building development node (ports 15984/15986)"
-	@./rebar generate target_dir=dev overlay_vars=dev.config
+	@./rebar generate target_dir=dev overlay_vars=dev.config verbose=1
 	@echo "\n\
 Development node is built, and can be started using ./rel/dev/bin/couchdb.\n" 

@@ -1,0 +1,5 @@
+#!/bin/sh
+LDFLAGS="$(pkg-config mozilla-js --libs-only-L)" \
+CFLAGS="$(pkg-config mozilla-js --cflags)" \
+JSLIB=mozjs \
+./rebar compile

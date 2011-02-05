@@ -1,0 +1,12 @@
+rm -rf build
+mkdir build
+cat js/json2.js      > build/main.js
+cat js/filter.js    >> build/main.js
+cat js/mimeparse.js >> build/main.js
+cat js/render.js    >> build/main.js
+cat js/state.js     >> build/main.js
+cat js/util.js      >> build/main.js
+cat js/validate.js  >> build/main.js
+cat js/views.js     >> build/main.js
+cat js/loop.js      >> build/main.js
+touch dummy.dll
